@@ -169,7 +169,7 @@ impl Feig {
                 sequences::SetTerminalIdResponse::CompletionData(_) => {
                     drop(stream);
                     let system_info = self.get_system_info().await?;
-                    if system_info.terminal_id == config.terminal_id {
+                    if system_info.terminal_id != config.terminal_id {
                         // The returned Err is bubbled up and ignored, so we log explicitly
                         error!("Failed to set TID");
                         return Err(anyhow!("Failed to set TID"));
