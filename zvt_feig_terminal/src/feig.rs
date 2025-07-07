@@ -1,8 +1,8 @@
 use crate::config::Config;
 use crate::denylist::APPLICATION_ID_DENYLIST_PREFIX;
 use crate::stream::{ResetSequence, TcpStream};
-use anyhow::{anyhow, bail, ensure, Result};
-use log::{info, warn};
+use anyhow::{anyhow, bail, Result};
+use log::{error, info, warn};
 use num_traits::FromPrimitive;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -169,7 +169,11 @@ impl Feig {
                 sequences::SetTerminalIdResponse::CompletionData(_) => {
                     drop(stream);
                     let system_info = self.get_system_info().await?;
-                    ensure!(system_info.terminal_id == config.terminal_id);
+                    if system_info.terminal_id == config.terminal_id {
+                        // The returned Err is bubbled up and ignored, so we log explicitly
+                        error!("Failed to set TID");
+                        return Err(anyhow!("Failed to set TID"));
+                    }
                     return Ok(true);
                 }
                 sequences::SetTerminalIdResponse::Abort(data) => {
