@@ -54,6 +54,9 @@ pub enum Error {
 
     #[error("The presented card requires a PIN entry.")]
     NeedsPinEntry,
+
+    #[error("The config TID failed to be set")]
+    TidMismatch,
 }
 
 /// Default card type, which is chip-card, as defined in Table 6.
@@ -179,7 +182,10 @@ impl Feig {
                 sequences::SetTerminalIdResponse::CompletionData(_) => {
                     drop(stream);
                     let system_info = self.get_system_info().await?;
-                    ensure!(system_info.terminal_id == config.terminal_id);
+                    ensure!(
+                        system_info.terminal_id == config.terminal_id,
+                        Error::TidMismatch
+                    );
                     return Ok(true);
                 }
                 sequences::SetTerminalIdResponse::Abort(data) => {
@@ -322,6 +328,22 @@ impl Feig {
         bail!(zvt::ZVTError::IncompleteData)
     }
 
+    /// Attempt to set the terminal id and confirm if it was set correctly.
+    /// Set as public to allow users to confirm the TID in case of
+    /// configuration errors.
+    ///
+    /// Returns true if a new TID was set, and false if the requested TID is
+    /// already set to the terminal.
+    pub async fn update_terminal_id(&mut self) -> Result<bool> {
+        let tid_changed = self.set_terminal_id().await?;
+        if tid_changed {
+            self.run_diagnosis(packets::DiagnosisType::EmvConfiguration)
+                .await?;
+        }
+        self.initialize().await?;
+        Ok(tid_changed)
+    }
+
     /// Initializes the connection.
     ///
     /// We're doing the following
@@ -329,12 +351,8 @@ impl Feig {
     /// * Initialize the terminal.
     /// * Run end-of-day job.
     pub async fn configure(&mut self) -> Result<()> {
-        let tid_changed = self.set_terminal_id().await?;
-        if tid_changed {
-            self.run_diagnosis(packets::DiagnosisType::EmvConfiguration)
-                .await?;
-        }
-        self.initialize().await?;
+        // The return value is not of interest at this point
+        let _ = self.update_terminal_id().await?;
         self.end_of_day().await?;
 
         Ok(())
